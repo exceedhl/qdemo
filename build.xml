@@ -1,15 +1,9 @@
 <project name="qdemo" default="all">
 
-	<property name="lib.dir" value="${basedir}/lib"/>
-	<property name="checkstyle.home"
-            value="${basedir}/tools/checkstyle" />
-  <property name="findbugs.home" value="${basedir}/tools/findbugs-1.3.9" />
-
-   <path id="findbugs.path">
-     <fileset dir="${findbugs.home}/lib" includes="*.jar"/>
-   </path>
-
-	<property name="tools.lib.dir" value="${lib.dir}/tools"/>
+    <property name="lib.dir" value="${basedir}/lib"/>
+    <property name="tools.lib.dir" value="${lib.dir}/tools"/>
+    <property name="panopticode.dir" value="${tools.lib.dir}/panopticode"/>
+    <property name="findbugs.dir" value="${tools.lib.dir}/findbugs-1.3.9"/>
 
     <property name="src.dir" value="${basedir}/src"/>
     <property name="src.lib.dir" value="${lib.dir}/production"/>
@@ -22,12 +16,13 @@
     <property name="build.dir" value="${basedir}/build"/>
     <property name="src.classes.dir" value="${build.dir}/production"/>
     <property name="test.classes.dir" value="${build.dir}/test"/>
-	<property name="emma.classes.dir" value="${build.dir}/emma"/>
+    <property name="emma.classes.dir" value="${build.dir}/emma"/>
     <property name="war.dir" value="${build.dir}/war"/>
     <property name="reports.dir" value="${build.dir}/reports"/>
     <property name="test.reports.dir" value="${reports.dir}/junit"/>
     <property name="checkstyle.reports.dir" value="${reports.dir}/checkstyle"/>
     <property name="findbugs.reports.dir" value="${reports.dir}/findbugs"/>
+    <property name="treemap.reports.dir" value="${reports.dir}/treemap"/>
 
     <property name="web.classes.dir" value="${war.dir}/WEB-INF/classes"/>
 
@@ -38,23 +33,24 @@
     </path>
 
     <path id="compile.test.classpath">
-        <path refid="compile.src.classpath"/>
         <fileset dir="${test.lib.dir}">
             <include name="**/*.jar"/>
         </fileset>
-        <pathelement location="${test.classes.dir}"/>
     </path>
 
-	<path id="tools.classpath">
-        <fileset dir="${tools.lib.dir}">
+    <path id="tools.classpath">
+        <fileset dir="${panopticode.dir}">
+            <include name="**/*.jar"/>
+        </fileset>
+        <fileset dir="${findbugs.dir}">
             <include name="**/*.jar"/>
         </fileset>
     </path>
 
     <path id="run.server.classpath">
         <fileset dir="${test.lib.dir}">
-             <include name="**/*.jar"/>
-         </fileset>
+            <include name="**/*.jar"/>
+        </fileset>
         <pathelement location="${test.classes.dir}"/>
     </path>
 
@@ -62,11 +58,12 @@
         <mkdir dir="${src.classes.dir}"/>
         <mkdir dir="${war.dir}"/>
         <mkdir dir="${test.classes.dir}"/>
-		<mkdir dir="${emma.classes.dir}"/>
+        <mkdir dir="${emma.classes.dir}"/>
         <mkdir dir="${web.classes.dir}"/>
         <mkdir dir="${test.reports.dir}"/>
         <mkdir dir="${checkstyle.reports.dir}"/>
         <mkdir dir="${findbugs.reports.dir}"/>
+        <mkdir dir="${treemap.reports.dir}"/>
     </target>
 
     <target name="-clean">
@@ -92,38 +89,143 @@
             <classpath path="${src.classes.dir}"/>
         </javac>
     </target>
-    
-    <taskdef resource="checkstyletask.properties" classpath="${checkstyle.home}/checkstyle-5.3-all.jar"/>
-    <target name="-checkstyle"
-            description="Generates a report of code convention violations.">
 
-      <checkstyle config="${checkstyle.home}/sun_checks.xml"
-                  failureProperty="checkstyle.failure"
-                  failOnViolation="false">
-        <formatter type="xml" tofile="${checkstyle.reports.dir}/checkstyle_report.xml"/>
-        <fileset dir="${src.dir}" includes="**/*.java"/>
-      </checkstyle>
+    <target name="-checkstyle">
+    	<taskdef resource="checkstyletask.properties" classpathref="tools.classpath"/>
+        <checkstyle config="${tools.lib.dir}/panopticode/supplements/checkstyle/etc/sun_checks.xml"
+                    failureProperty="checkstyle.failure"
+                    failOnViolation="false">
+            <formatter type="xml" tofile="${checkstyle.reports.dir}/checkstyle_report.xml"/>
+            <fileset dir="${src.dir}" includes="**/*.java"/>
+        </checkstyle>
 
-      <style in="${checkstyle.reports.dir}/checkstyle_report.xml" out="${checkstyle.reports.dir}/checkstyle_report.html" style="${checkstyle.home}/contrib/checkstyle-simple.xsl"/>
-
+        <xslt in="${checkstyle.reports.dir}/checkstyle_report.xml"
+              out="${checkstyle.reports.dir}/checkstyle_report.html"
+              style="${tools.lib.dir}/panopticode/supplements/checkstyle/xslt/checkstyle-noframes.xsl"/>
     </target>
-    
-    <typedef name="findbugs"
-                 classname="edu.umd.cs.findbugs.anttask.FindBugsTask"
-                 classpathref="findbugs.path"
-                 loaderref="findbugs.path.loader"
-                 />
-                 
+
     <target name="-findbugs">
-      <findbugs home="${findbugs.home}"
-                output="html"
-				jvmArgs="-Xms256m -Xmx800m"
-                outputFile="${findbugs.reports.dir}/findbugs.html" >
-        <sourcePath path="${srcdir}" />
-        <class location="${src.classes.dir}" />
-      </findbugs>
+        <typedef name="findbugs"
+                 classname="edu.umd.cs.findbugs.anttask.FindBugsTask"
+                 classpathref="tools.classpath"
+                 loaderref="findbugs.path.loader"
+                />
+        <findbugs home="${tools.lib.dir}/findbugs-1.3.9"
+                  output="html"
+                  jvmArgs="-Xms256m -Xmx800m"
+                  outputFile="${findbugs.reports.dir}/findbugs.html">
+            <sourcePath path="${srcdir}"/>
+            <class location="${src.classes.dir}"/>
+        </findbugs>
     </target>
-    
+
+	<target name="-javadoc">
+		<javadoc classpathref="tools.classpath"
+                 sourcepath="${src.dir}"
+                 access="private">
+          <fileset dir="${src.dir}" />
+          <doclet name="org.panopticode.doclet.PanopticodeDoclet"
+                  pathref="tools.classpath">
+            <param name="-debug" value="true" />
+            <param name="-projectName" value="${project.name}" />
+            <param name="-projectVersion" value="1.0" />
+            <param name="-outputFile" value="${treemap.reports.dir}/panopticode.xml" />
+          </doclet>
+        </javadoc>
+	</target>
+	
+	<target name="-javancss">
+		<taskdef name="javancss" classname="javancss.JavancssAntTask" classpathref="tools.classpath" />
+
+        <javancss srcdir="${src.dir}"
+                  generateReport="true"
+                  outputfile="${treemap.reports.dir}/javancss.xml"
+                  format="xml" />
+
+        <xslt style="${panopticode.dir}/supplements/javancss/xslt/javancss2html.xsl"
+              in="${treemap.reports.dir}/javancss.xml"
+              out="${treemap.reports.dir}/javancss.html" />
+	</target>
+	
+	<target name="-complexian">
+		<taskdef resource="complexiantask.properties" classpathref="tools.classpath"/>
+
+        <complexian failOnViolation="false" threshold="100">
+            <fileset dir="${src.dir}" includes="**/*.java"/>
+        </complexian>
+	</target>
+	
+	<target name="-simian">
+		<taskdef resource="simiantask.properties" classpathref="tools.classpath"/>
+
+        <simian language="java" threshold="10">
+            <fileset dir="${src.dir}" includes="**/*.java"/>
+
+            <formatter type="xml" toFile="${treemap.reports.dir}/simian.xml"/>
+        </simian>
+	</target>
+	
+	<target name="-jdepend">
+		<taskdef name="jdepend" classname="org.apache.tools.ant.taskdefs.optional.jdepend.JDependTask" classpathref="tools.classpath"/>
+        <jdepend format="xml" outputfile="${treemap.reports.dir}/jdepend.xml">
+            <exclude name="java.*"/>
+            <exclude name="javax.*"/>
+            <classespath>
+                <pathelement location="${src.classes.dir}" />
+            </classespath>
+            <classpath location="${src.classes.dir}" />
+        </jdepend>
+
+        <xslt style="${panopticode.dir}/supplements/jdepend/xslt/jdepend.xsl"
+              in="${treemap.reports.dir}/jdepend.xml"
+              out="${treemap.reports.dir}/jdepend.html" />
+	</target>
+	
+	<target name="-treemap">
+		<taskdef name="javancssPanopticode" classpathref="tools.classpath"
+			classname="org.panopticode.supplement.ant.JavaNCSSPanopticode" />
+
+		<javancssPanopticode
+			panopticodeFile="${treemap.reports.dir}/panopticode.xml"
+			javancssFile="${treemap.reports.dir}/javancss.xml" />
+			
+		<taskdef name="emmaPanopticode" classpathref="tools.classpath"
+			classname="org.panopticode.supplement.ant.EmmaPanopticode" />
+		<emmaPanopticode
+			panopticodeFile="${treemap.reports.dir}/panopticode.xml" 
+			emmaFile="${reports.dir}/emma/coverage.xml" />
+		
+		<report pluginClass="org.panopticode.report.treemap.ComplexityTreemap"
+            panopticodeDir="${panopticode.dir}"
+            panopticodeXmlFile="${treemap.reports.dir}/panopticode.xml"
+            file="${treemap.reports.dir}/interactive-complexity-treemap.svg"
+            interactive="-interactive" />
+
+        <report pluginClass="org.panopticode.report.treemap.CoverageTreemap"
+            panopticodeDir="${panopticode.dir}"
+            panopticodeXmlFile="${treemap.reports.dir}/panopticode.xml"
+            file="${treemap.reports.dir}/interactive-coverage-treemap.svg"
+            interactive="-interactive" />			
+	</target>
+	
+	<macrodef name="report">
+        <attribute name="panopticodeDir" />
+        <attribute name="pluginClass" />
+        <attribute name="panopticodeXmlFile" />
+        <attribute name="file" />
+        <attribute name="interactive" default="" />
+
+        <sequential>
+            <java classpath="@{panopticodeDir}/panopticode.jar"
+                  classname="org.panopticode.ReportRunner"
+                  fork="true" >
+              <arg value="@{pluginClass}"/>
+              <arg value="@{panopticodeXmlFile}"/>
+              <arg value="@{file}"/>
+              <arg value="@{interactive}"/>
+            </java>
+        </sequential>
+    </macrodef>
 
     <target name="-build.war">
         <copy todir="${web.classes.dir}">
@@ -132,9 +234,9 @@
         <copy todir="${war.dir}">
             <fileset dir="${websrc.dir}"/>
         </copy>
-		<copy todir="${war.dir}/WEB-INF/lib">
-			<fileset dir="${src.lib.dir}"/>
-		</copy>
+        <copy todir="${war.dir}/WEB-INF/lib">
+            <fileset dir="${src.lib.dir}"/>
+        </copy>
     </target>
 
     <target name="-package">
@@ -148,7 +250,7 @@
             <classpath>
                 <pathelement location="${emma.classes.dir}"/>
                 <pathelement location="${test.classes.dir}"/>
-				<pathelement location="${tools.lib.dir}/emma.jar"/>
+                <pathelement location="${panopticode.dir}/supplements/emma/lib/emma.jar"/>
                 <fileset dir="${test.lib.dir}">
                     <include name="**/*.jar"/>
                 </fileset>
@@ -165,8 +267,8 @@
                 </fileset>
             </batchtest>
 
-			<jvmarg value="-Demma.coverage.out.file=${reports.dir}/emma/coverage.emma" />
-			<jvmarg value="-Demma.coverage.out.merge=false" />
+            <jvmarg value="-Demma.coverage.out.file=${reports.dir}/emma/coverage.emma"/>
+            <jvmarg value="-Demma.coverage.out.merge=false"/>
         </junit>
 
         <junitreport todir="${test.reports.dir}">
@@ -176,75 +278,78 @@
             <report format="frames" todir="${test.reports.dir}/html"/>
         </junitreport>
     </target>
-    
-     <taskdef classpathref="run.server.classpath" resource="tasks.properties" loaderref="jetty.loader" />
 
-	<taskdef resource="emma_ant.properties" classpathref="tools.classpath" />
-	<property name="emma.enabled" value="true" />
-	
-	<target name="-emma.instrument" description="intrument src classes">
-		<emma enabled="${emma.enabled}" >
-		    <instr instrpath="${src.classes.dir}"
-		         destdir="${emma.classes.dir}"
-		         metadatafile="${reports.dir}/emma/metadata.emma"
-		         merge="true"
-		    />
-		</emma>
-	</target>
-	
-	<target name="-emma.report" description="generate emma report" >
-		<emma enabled="${emma.enabled}" >
-		    <report sourcepath="${src.dir}"
-		          sort="+block,+name,+method,+class"
-		          metrics="method:70,block:80,line:80,class:100"
-		    >
-		    <fileset dir="${reports.dir}/emma" >
-		        <include name="*.emma" />
-		    </fileset>
+    <taskdef resource="emma_ant.properties" classpathref="tools.classpath"/>
+    <property name="emma.enabled" value="true"/>
 
-		    <html outfile="${reports.dir}/emma/coverage.html"
-		        depth="method"
-		        columns="name,class,method,block,line"
-		    />
-		    </report>
-		</emma>
+    <target name="-emma.instrument" description="intrument src classes">
+        <emma enabled="${emma.enabled}">
+            <instr instrpath="${src.classes.dir}"
+                   destdir="${emma.classes.dir}"
+                   metadatafile="${reports.dir}/emma/metadata.emma"
+                   merge="true"
+                    />
+        </emma>
     </target>
 
-     <target name="server.run">
-       <jetty tempDirectory="jetty-temp">
-         <webApp name="qdemo" warfile="${war.dir}" contextpath="/" />
-       </jetty>
-     </target>
-     
-     <target name="run.functional.test" depends="-compile.test">
-        <antcall target="start.selenium"></antcall>
-       
-         <junit showoutput="true"
-                outputtoformatters="true"
-                printsummary="yes" 
-                haltonfailure="yes">
-             <classpath>
-                 <pathelement location="${src.classes.dir}"/>
-                 <pathelement location="${test.classes.dir}"/>
-                 <fileset dir="${test.lib.dir}">
-                     <include name="**/*.jar"/>
-                 </fileset>
-                 <fileset dir="${src.lib.dir}">
-                     <include name="**/*.jar"/>
-                 </fileset>
-             </classpath>
+    <target name="-emma.report" description="generate emma report">
+        <emma enabled="${emma.enabled}">
+            <report sourcepath="${src.dir}"
+                    sort="+block,+name,+method,+class"
+                    metrics="method:70,block:80,line:80,class:100">
+                <fileset dir="${reports.dir}/emma">
+                    <include name="*.emma"/>
+                </fileset>
 
-             <formatter type="brief" usefile="false"/>
-                         
-             <batchtest fork="yes" todir="${test.reports.dir}">
-                 <fileset dir="${test.dir}/functional">
-                     <include name="**/*Test.java"/>
-                 </fileset>
-             </batchtest>
-         </junit>
-         <antcall target="stop.selenium"></antcall>
-     </target>
-    
+                <html outfile="${reports.dir}/emma/coverage.html"
+                      depth="method"
+                      columns="name,class,method,block,line"
+                        />
+				<xml outfile="${reports.dir}/emma/coverage.xml"
+                      depth="method"
+                      columns="name,class,method,block,line"
+                        />
+            </report>
+        </emma>
+    </target>
+
+
+    <taskdef classpathref="run.server.classpath" resource="tasks.properties" loaderref="jetty.loader"/>
+    <target name="server.run">
+        <jetty tempDirectory="jetty-temp">
+            <webApp name="qdemo" warfile="${war.dir}" contextpath="/"/>
+        </jetty>
+    </target>
+
+    <target name="run.functional.test" depends="-compile.test">
+        <antcall target="start.selenium"></antcall>
+
+        <junit showoutput="true"
+               outputtoformatters="true"
+               printsummary="yes"
+               haltonfailure="yes">
+            <classpath>
+                <pathelement location="${src.classes.dir}"/>
+                <pathelement location="${test.classes.dir}"/>
+                <fileset dir="${test.lib.dir}">
+                    <include name="**/*.jar"/>
+                </fileset>
+                <fileset dir="${src.lib.dir}">
+                    <include name="**/*.jar"/>
+                </fileset>
+            </classpath>
+
+            <formatter type="brief" usefile="false"/>
+
+            <batchtest fork="yes" todir="${test.reports.dir}">
+                <fileset dir="${test.dir}/functional">
+                    <include name="**/*Test.java"/>
+                </fileset>
+            </batchtest>
+        </junit>
+        <antcall target="stop.selenium"></antcall>
+    </target>
+
     <!-- <target name="start.server">
         <java classname="JettyServer">
             <arg value="${war.dir}"/>
@@ -413,7 +518,7 @@
             <property name="closeBrowsersAfterTestRuns" value="${jsunit.closeBrowsers}"/>
         </ant>
     </target-->
-    
+
     <target name="start.selenium">
         <java jar="${test.lib.dir}/selenium-server-standalone-2.0b1.jar"
               fork="true"
@@ -422,33 +527,40 @@
 
         <waitfor maxwait="5" maxwaitunit="second">
             <and>
-                 <socket server="localhost" port="4444"/>
-                 <http url="http://localhost:4444/selenium-server/core/index.html" errorsBeginAt="404"/>
+                <socket server="localhost" port="4444"/>
+                <http url="http://localhost:4444/selenium-server/core/index.html" errorsBeginAt="404"/>
             </and>
         </waitfor>
     </target>
-    
+
     <target name="stop.selenium">
         <get taskname="selenium-shutdown" src="http://localhost:4444/selenium-server/driver/?cmd=shutDownSeleniumServer"
-            dest="result.txt" ignoreerrors="true" />
-        <echo taskname="selenium-shutdown" message="DGF Errors during shutdown are expected" />
+             dest="result.txt" ignoreerrors="true"/>
+        <echo taskname="selenium-shutdown" message="DGF Errors during shutdown are expected"/>
     </target>
 
     <target name="--init" depends="-clean, -init"/>
     <target name="--compile.src" depends="--init, -compile.src"/>
     <target name="--compile.all" depends="--compile.src, -compile.test"/>
-	<target name="--run.unit.test" depends="--compile.all, -emma.instrument, -run.unit.test"/>
-	<target name="--checkstyle" depends="-init, -checkstyle"/>
+    <target name="--run.unit.test" depends="--compile.all, -emma.instrument, -run.unit.test"/>
+    <target name="--checkstyle" depends="-init, -checkstyle"/>
     <target name="--package" depends="-build.war, -package"/>
-	<target name="--all" depends="--init, --compile.all, --run.unit.test, -emma.report, --checkstyle, -findbugs, --package"/>
+    <target name="--all"
+            depends="--init, --compile.all, --run.unit.test, -emma.report, --checkstyle, -findbugs, --treemap, --package"/>
+    <target name="--treemap" depends="-javadoc, -javancss, -treemap"/>
 
-	<target name="all" depends="--all" description="run all"/>
+    <target name="all" depends="--all" description="run all"/>
+    <target name="init" depends="--init" description="init"/>
     <target name="clean" depends="-clean" description="clean all"/>
-	<target name="compile" depends="--compile.all" description="compile all"/>
+    <target name="compile" depends="--compile.all" description="compile all"/>
     <target name="checkstyle" depends="--checkstyle" description="run checkstyle"/>
     <target name="findbugs" depends="-findbugs" description="run findbugs"/>
-	<target name="ut" depends="--run.unit.test" description="run unit tests"/>
-	<target name="coverage" depends="-emma.report" description="generate emma report"/>
+    <target name="ut" depends="--run.unit.test" description="run unit tests"/>
+    <target name="coverage" depends="-emma.report" description="generate emma report"/>
+    <target name="treemap" depends="--treemap" description="generate treemap report"/>
+    <target name="simian" depends="-simian" description="generate simian report"/>
+    <target name="complexian" depends="-complexian" description="check complexian"/>
+    <target name="jdepend" depends="-jdepend" description="generate dependency report"/>
     <target name="package" depends="--package" description="create war package"/>
 
 </project>

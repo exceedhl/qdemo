@@ -1,2 +1,6 @@
 .DS_Store
 build
+Qdemo.iml
+qdemo.ipr
+qdemo.iws
+test/Test.iml
